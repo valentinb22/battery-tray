@@ -384,6 +384,17 @@ windows_targets::link!("kernel32.dll" "system" fn GetLocalTime(t: *mut SYSTEMTIM
 // advapi32
 windows_targets::link!("advapi32.dll" "system" fn RegGetValueW(key: HKEY, subkey: *const u16, value: *const u16, flags: u32, ty: *mut u32, data: *mut c_void, len: *mut u32) -> i32);
 windows_targets::link!("advapi32.dll" "system" fn RegSetKeyValueW(key: HKEY, subkey: *const u16, value: *const u16, ty: u32, data: *const c_void, len: u32) -> i32);
+windows_targets::link!("advapi32.dll" "system" fn RegDeleteTreeW(key: HKEY, subkey: *const u16) -> i32);
+windows_targets::link!("user32.dll" "system" fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, ty: u32) -> i32);
+windows_targets::link!("user32.dll" "system" fn FindWindowW(class: *const u16, title: *const u16) -> HWND);
+pub const MB_YESNO: u32 = 0x4;
+pub const MB_OK: u32 = 0x0;
+pub const MB_ICONQUESTION: u32 = 0x20;
+pub const MB_ICONINFORMATION: u32 = 0x40;
+pub const MB_ICONWARNING: u32 = 0x30;
+pub const MB_SETFOREGROUND: u32 = 0x10000;
+pub const IDYES: i32 = 6;
+pub const WM_CLOSE: u32 = 0x0010;
 windows_targets::link!("advapi32.dll" "system" fn RegDeleteKeyValueW(key: HKEY, subkey: *const u16, value: *const u16) -> i32);
 
 // ole32

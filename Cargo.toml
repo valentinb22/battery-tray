@@ -1,6 +1,6 @@
 [package]
 name = "battery-tray"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Nivel de batería de periféricos inalámbricos en la bandeja del sistema (Windows 10/11)"
 publish = false
@@ -12,7 +12,8 @@ path = "src/main.rs"
 [dependencies]
 # Solo bibliotecas de importación de Win32: sin runtime, sin código propio en el binario.
 windows-targets = "0.52.6"
-# Proyecciones WinRT, únicamente para el servicio GATT de batería (BLE).
+# Proyecciones WinRT para el servicio GATT de batería (BLE) y COM para el acceso
+# directo del menú Inicio que crea el instalador integrado.
 windows = { version = "0.58", features = [
     "Foundation",
     "Foundation_Collections",
@@ -20,6 +21,9 @@ windows = { version = "0.58", features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",
     "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
 ] }
 
 [profile.release]

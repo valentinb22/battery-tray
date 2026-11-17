@@ -1,18 +1,33 @@
 # Battery Tray
 
 Nivel de batería de mouse, teclado y auriculares inalámbricos en la bandeja del sistema de
-Windows 10/11. Binario nativo de ~410 KB sin runtime.
+Windows 10/11. Binario nativo de ~470 KB sin runtime.
 
 **Medido en este equipo (Windows 10 22H2):** 1,5 MB de working set en reposo (4,3 MB privados),
 4 hilos, **0 ms de CPU en 60 s de reposo**. Un escaneo completo con auriculares HyperX y
 teclado Compx tarda ~70 ms (~2 s si el teclado está dormido y no contesta), en un hilo aparte.
+
+## Instalación
+
+1. Descargá `BatteryTray-Setup.exe` y abrilo.
+2. Windows SmartScreen puede avisar "Windows protegió su PC" porque el ejecutable no está
+   firmado: tocá **Más información → Ejecutar de todas formas**.
+3. Respondé **Sí** a "¿Instalar Battery Tray en este equipo?".
+
+Se instala solo para tu usuario (sin permisos de administrador) en
+`%LOCALAPPDATA%\BatteryTray`, se agrega al menú Inicio, arranca con Windows y aparece en
+**Configuración → Aplicaciones**, desde donde se desinstala. Si respondés **No**, se ejecuta
+sin instalar. Abrir una versión más nueva del Setup actualiza la instalada.
+
+Los iconos aparecen junto al reloj. En Windows 10 los iconos nuevos van al panel oculto (˄):
+arrastralos a la barra de tareas para verlos siempre.
 
 ## 1. Arquitectura
 
 **Rust + Win32 directo + WinRT solo para BLE.**
 
 - **Rust** genera código máquina sin GC ni runtime. La biblioteca estándar no pesa casi nada y
-  con `panic = "abort"` + LTO el `.exe` queda en ~410 KB.
+  con `panic = "abort"` + LTO el `.exe` queda en ~470 KB.
 - **Win32 declarado a mano** (`src/ffi.rs`): solo las ~70 funciones que se usan, enlazadas con las
   import libs de `windows-targets`. No hay framework de UI ni capa de abstracción.
 - **WinRT** (crate `windows`) se usa únicamente para el GATT Battery Service de Bluetooth LE,
@@ -73,6 +88,7 @@ Batery/
     ├── tray.rs           # Shell_NotifyIconW (icono, tooltip, notificación)
     ├── icon.rs           # icono dinámico dibujado en memoria (DIB 32 bpp + alfa)
     ├── config.rs         # HKCU\Software\BatteryTray y clave Run (inicio con Windows)
+    ├── setup.rs          # instalador integrado: copia, menú Inicio, Aplicaciones, desinstalar
     └── devices/
         ├── mod.rs        # modelo Device, fusión y deduplicación
         ├── pnp.rs        # propiedad PnP de batería Bluetooth
@@ -89,6 +105,7 @@ examples/                 # herramientas de investigación (no forman parte de l
     ├── watch.rs          # muestrea informes Feature candidatos
     ├── hyperx.rs         # prueba aislada del protocolo HyperX
     ├── razer.rs          # prueba aislada del protocolo Razer
+    ├── stamp.rs          # añade icono y versión al .exe (genera el Setup)
     └── compx.rs          # prueba aislada del protocolo Compx
 ```
 
@@ -126,7 +143,13 @@ rustup toolchain install stable-x86_64-pc-windows-gnu
 cargo build --release
 ```
 
-El ejecutable queda en `target\release\battery-tray.exe`.
+El ejecutable queda en `target\release\battery-tray.exe`. Para generar el instalador con
+icono e información de versión (el toolchain GNU no trae `windres`; la herramienta escribe
+los recursos con la API `UpdateResource` de Windows):
+
+```bash
+cargo run --release --example stamp -- target/release/battery-tray.exe dist/BatteryTray-Setup.exe
+```
 
 Alternativa con MSVC (requiere Visual Studio Build Tools con "Desarrollo para escritorio con C++"):
 
@@ -154,6 +177,11 @@ target/release/battery-tray.exe --list | cat
 - Sin soporte todavía: mouse y teclados Corsair (iCUE/Slipstream), SteelSeries (mouse),
   Logitech G PRO X 2 / G522 (protocolo "Centurion"), Audeze, Jabra, Sony INZONE y otros con
   protocolo propio. Para investigarlos: `cargo run --release --example probe -- <VID>`.
+- **Logitech G435:** su receptor Lightspeed (046D:0ACB) no transmite la batería; el
+  auricular aparece en el menú como *Batería solo visible por Bluetooth*. Conectado por
+  Bluetooth, el % se lee de Windows como cualquier otro auricular Bluetooth.
+- **Mouse con cable** (Logitech G203 Lightsync, Razer DeathAdder Essential…): no tienen batería;
+  figuran en el menú como *Con cable*.
 - Los mandos PlayStation por Bluetooth solo informan batería si alguna aplicación (Steam,
   DS4Windows, un juego) activó el modo de informe completo.
 - HyperX no informa porcentaje, solo tensión: el % es una estimación por curva Li-Po (NGENUITY

@@ -6,9 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 
-const APP_KEY: &str = "Software\\BatteryTray";
-const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const RUN_VALUE: &str = "BatteryTray";
+pub const APP_KEY: &str = "Software\\BatteryTray";
+pub const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+pub const RUN_VALUE: &str = "BatteryTray";
 const THEME_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 
 pub const DEFAULT_POLL_MINUTES: u32 = 5;
@@ -32,7 +32,7 @@ fn get_dword(subkey: &str, value: &str) -> Option<u32> {
     (r == 0).then_some(data)
 }
 
-fn set_dword(subkey: &str, value: &str, data: u32) {
+pub fn set_dword(subkey: &str, value: &str, data: u32) {
     let (k, v) = (wide(subkey), wide(value));
     unsafe {
         RegSetKeyValueW(
@@ -46,7 +46,7 @@ fn set_dword(subkey: &str, value: &str, data: u32) {
     }
 }
 
-fn get_string(subkey: &str, value: &str) -> Option<String> {
+pub fn get_string(subkey: &str, value: &str) -> Option<String> {
     let (k, v) = (wide(subkey), wide(value));
     let mut buf = vec![0u16; 1024];
     let mut len = (buf.len() * 2) as u32;
@@ -62,6 +62,26 @@ fn get_string(subkey: &str, value: &str) -> Option<String> {
         )
     };
     (r == 0).then(|| from_wide(&buf))
+}
+
+pub fn set_string(subkey: &str, value: &str, data: &str) {
+    let (k, v, d) = (wide(subkey), wide(value), wide(data));
+    unsafe {
+        RegSetKeyValueW(
+            hkey_current_user(),
+            k.as_ptr(),
+            v.as_ptr(),
+            REG_SZ,
+            d.as_ptr() as *const c_void,
+            (d.len() * 2) as u32,
+        );
+    }
+}
+
+/// Borra una clave de HKCU con todo su contenido.
+pub fn delete_tree(subkey: &str) {
+    let k = wide(subkey);
+    unsafe { RegDeleteTreeW(hkey_current_user(), k.as_ptr()) };
 }
 
 const CACHE_KEY: &str = "Software\\BatteryTray\\Cache";
@@ -115,23 +135,23 @@ pub fn light_taskbar() -> bool {
     get_dword(THEME_KEY, "SystemUsesLightTheme") == Some(1)
 }
 
-fn current_exe() -> PathBuf {
+pub fn current_exe() -> PathBuf {
     let mut buf = vec![0u16; 32768];
     let n = unsafe { GetModuleFileNameW(null_mut(), buf.as_mut_ptr(), buf.len() as u32) } as usize;
     PathBuf::from(String::from_utf16_lossy(&buf[..n]))
 }
 
 /// Ubicación fija de la copia instalada: %LOCALAPPDATA%\BatteryTray\battery-tray.exe.
-fn installed_exe() -> Option<PathBuf> {
+pub fn installed_exe() -> Option<PathBuf> {
     let base = std::env::var_os("LOCALAPPDATA")?;
     Some(PathBuf::from(base).join("BatteryTray").join("battery-tray.exe"))
 }
 
-fn same_path(a: &Path, b: &Path) -> bool {
+pub fn same_path(a: &Path, b: &Path) -> bool {
     a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
 }
 
-fn quoted(p: &Path) -> String {
+pub fn quoted(p: &Path) -> String {
     format!("\"{}\"", p.display())
 }
 

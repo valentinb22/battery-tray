@@ -287,3 +287,21 @@ unsafe fn make_hicon(s: i32, px: &[u32]) -> HICON {
     }
     icon
 }
+
+/// Icono de la aplicación (ejecutable, menú Inicio, Aplicaciones): batería verde con rayo
+/// sobre un cuadrado redondeado oscuro. Lo usa la herramienta `examples/stamp.rs`.
+#[allow(dead_code)]
+pub fn app_icon(size: usize) -> Vec<u32> {
+    const BG: u32 = 0xFF1E_2A38;
+    const WHITE: u32 = 0xFFFF_FFFF;
+    let mut cv = Canvas::new(size);
+    cv.round_rect(0.4, 0.4, 15.6, 15.6, 3.4, BG);
+    cv.round_rect(2.2, 4.6, 12.9, 11.4, 1.3, WHITE); // cuerpo
+    cv.round_rect(3.1, 5.5, 12.0, 10.5, 0.7, BG);
+    cv.round_rect(12.9, 6.5, 14.2, 9.5, 0.5, WHITE); // borne
+    cv.round_rect(3.9, 6.3, 11.2, 9.7, 0.4, GREEN); // carga
+    let bolt = [(8.3, 5.0), (5.6, 8.4), (7.4, 8.4), (6.6, 11.0), (9.6, 7.4), (7.8, 7.4), (8.9, 5.0)];
+    cv.polygon(&bolt, 0.55, BG);
+    cv.polygon(&bolt, 0.0, WHITE);
+    cv.finish(size)
+}

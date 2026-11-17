@@ -70,6 +70,8 @@ pub enum Charge {
     Unknown,
     /// Periférico con cable: sin batería.
     Wired,
+    /// Inalámbrico que no informa batería por esta conexión (p. ej. G435 por Lightspeed).
+    NoReading,
 }
 
 impl Charge {
@@ -80,6 +82,7 @@ impl Charge {
             Charge::Full => "Carga completa",
             Charge::Unknown => "Estado no reportado",
             Charge::Wired => "Con cable",
+            Charge::NoReading => "Batería solo visible por Bluetooth",
         }
     }
 }
@@ -134,7 +137,7 @@ fn merge(mut all: Vec<Device>) -> Vec<Device> {
             if e.kind == Kind::Other {
                 e.kind = d.kind;
             }
-            if e.charge == Charge::Unknown && d.charge != Charge::Wired {
+            if e.charge == Charge::Unknown && !matches!(d.charge, Charge::Wired | Charge::NoReading) {
                 e.charge = d.charge;
             }
             continue;

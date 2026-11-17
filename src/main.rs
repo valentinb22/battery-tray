@@ -11,6 +11,7 @@ mod config;
 mod devices;
 mod ffi;
 mod icon;
+mod setup;
 mod tray;
 
 use core::ffi::c_void;
@@ -31,6 +32,14 @@ fn main() {
             println!("{:<12} {:<40} {:>4}  {}{}", d.kind.label(), d.name, level, d.charge.label(), note);
         }
         println!("{} dispositivo(s) en {} ms", list.len(), start.elapsed().as_millis());
+        return;
+    }
+    if std::env::args().any(|a| a == "--uninstall") {
+        setup::uninstall();
+        return;
+    }
+    // Abierto desde fuera de la carpeta de instalación: instalar o actualizar.
+    if setup::on_launch() {
         return;
     }
     unsafe {
@@ -63,7 +72,7 @@ fn main() {
         );
 
         let instance = GetModuleHandleW(null());
-        let class = wide("BatteryTrayHiddenWindow");
+        let class = wide(setup::WINDOW_CLASS);
         let wc = WNDCLASSEXW {
             cb_size: size_of::<WNDCLASSEXW>() as u32,
             wnd_proc: Some(app::wndproc),

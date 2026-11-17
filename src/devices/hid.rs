@@ -10,6 +10,9 @@ use std::ptr::{null, null_mut};
 
 const GUID_DEVINTERFACE_HID: GUID = GUID::from_u128(0x4d1e55b2_f16f_11cf_88cb_001111000030);
 const VID_LOGITECH: u16 = 0x046D;
+/// Receptor Lightspeed de los auriculares Logitech G435: no transmite la batería
+/// (verificado por HeadsetControl #336/#402). Por Bluetooth sí: la lee la fuente PnP.
+const PID_G435_LIGHTSPEED: u16 = 0x0ACB;
 const PAGE_GENERIC_DEVICE: u16 = 0x06;
 const USAGE_BATTERY_STRENGTH: u16 = 0x20;
 
@@ -98,6 +101,19 @@ unsafe fn probe(path: &[u16], out: &mut Vec<Device>, done: &mut Vec<(u16, u16)>)
     }
     let path_str = String::from_utf16_lossy(&path[..path.len().saturating_sub(1)]);
     let path_lower = path_str.to_lowercase();
+
+    if id == (VID_LOGITECH, PID_G435_LIGHTSPEED) {
+        done.push(id);
+        out.push(Device {
+            name: "Logitech G435".into(),
+            kind: Kind::Headset,
+            level: None,
+            charge: Charge::NoReading,
+            priority: 5,
+            asleep: None,
+        });
+        return;
+    }
 
     // Razer: informe Feature de 90 bytes (más el ID) en la colección de control.
     if attrs.vendor_id == razer::VID && caps.feature_len as usize == razer::FEATURE_LEN {
@@ -260,8 +276,11 @@ unsafe fn wired_mouse(h: HANDLE, path: &[u16], vid: u16) -> Option<Device> {
     if HidD_GetProductString(h, buf.as_mut_ptr() as *mut c_void, 254) == 0 {
         return None;
     }
-    let name = from_wide(&buf).trim().to_string();
+    let mut name = from_wide(&buf).trim().to_string();
     let lower = name.to_lowercase();
+    if vid == VID_LOGITECH && !lower.starts_with("logitech") && !name.is_empty() {
+        name = format!("Logitech {name}"); // p. ej. "G203 LIGHTSYNC Gaming Mouse"
+    }
     let wireless = ["receiver", "receptor", "wireless", "dongle", "2.4g", "lightspeed", "unifying", "bolt", "hyperspeed", "slipstream"];
     if name.is_empty() || wireless.iter().any(|w| lower.contains(w)) {
         return None;
