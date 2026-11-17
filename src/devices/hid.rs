@@ -1,7 +1,8 @@
-//! Enumeración HID: detecta colecciones Logitech HID++ y colecciones estándar con
-//! "Battery Strength" (Usage Page 0x06 Generic Device Controls, Usage 0x20).
+//! Enumeración HID: reparte cada colección al protocolo que le corresponde (Logitech HID++,
+//! Razer, auriculares de fabricante, mandos PlayStation, HyperX, Compx) y, si ninguno aplica,
+//! busca el valor estándar "Battery Strength" (Usage Page 0x06, Usage 0x20).
 
-use super::{compx, hidpp, hyperx, Charge, Device, Kind};
+use super::{compx, gamepads, headsets, hidpp, hyperx, razer, Charge, Device, Kind};
 use crate::ffi::*;
 use core::ffi::c_void;
 use std::mem::zeroed;
@@ -13,8 +14,11 @@ const PAGE_GENERIC_DEVICE: u16 = 0x06;
 const USAGE_BATTERY_STRENGTH: u16 = 0x20;
 
 pub fn collect(out: &mut Vec<Device>) {
+    // Un mismo dispositivo expone varias colecciones: cuando un protocolo de fabricante ya
+    // obtuvo su lectura, las demás colecciones de ese VID:PID se saltan.
+    let mut done: Vec<(u16, u16)> = Vec::new();
     for path in interface_paths(&GUID_DEVINTERFACE_HID) {
-        unsafe { probe(&path, out) };
+        unsafe { probe(&path, out, &mut done) };
     }
 }
 
@@ -69,7 +73,7 @@ impl Drop for Preparsed {
     }
 }
 
-unsafe fn probe(path: &[u16], out: &mut Vec<Device>) {
+unsafe fn probe(path: &[u16], out: &mut Vec<Device>, done: &mut Vec<(u16, u16)>) {
     // Acceso 0: siempre permitido (incluso para teclados/ratones abiertos en exclusiva
     // por el sistema) y suficiente para atributos y descriptores.
     let Some(h0) = open(path, 0, false) else { return };
@@ -86,6 +90,57 @@ unsafe fn probe(path: &[u16], out: &mut Vec<Device>) {
     let mut caps: HIDP_CAPS = zeroed();
     if HidP_GetCaps(pp.0, &mut caps) != HIDP_STATUS_SUCCESS {
         return;
+    }
+
+    let id = (attrs.vendor_id, attrs.product_id);
+    if done.contains(&id) {
+        return;
+    }
+    let path_str = String::from_utf16_lossy(&path[..path.len().saturating_sub(1)]);
+    let path_lower = path_str.to_lowercase();
+
+    // Razer: informe Feature de 90 bytes (más el ID) en la colección de control.
+    if attrs.vendor_id == razer::VID && caps.feature_len as usize == razer::FEATURE_LEN {
+        if razer::query(h0.0, &path_str, (caps.usage_page, caps.usage), out) {
+            done.push(id);
+            return;
+        }
+    }
+
+    // Auriculares de fabricante (SteelSeries, Corsair, HyperX…): petición Output, respuesta Input.
+    if let Some(spec) = headsets::find(attrs.vendor_id, attrs.product_id) {
+        if caps.output_len > 0 && spec.wants(caps.usage_page, caps.usage, &path_lower) {
+            if let Some(h) = open(path, GENERIC_READ | GENERIC_WRITE, true) {
+                if let Some(ch) = hidpp::Channel::any(h.0, caps.input_len as usize, caps.output_len as usize) {
+                    if let Some((level, charge)) =
+                        spec.query(&ch, caps.output_len as usize, caps.input_len as usize, attrs.product_id)
+                    {
+                        out.push(Device {
+                            name: spec.name.into(),
+                            kind: Kind::Headset,
+                            level: Some(level),
+                            charge,
+                            priority: 40,
+                            asleep: None,
+                        });
+                        done.push(id);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    // Mandos PlayStation: el nivel viaja en el informe Input periódico.
+    if attrs.vendor_id == gamepads::VID_SONY && caps.usage_page == 0x01 && caps.usage == 0x05 {
+        if let Some(h) = open(path, GENERIC_READ, true) {
+            if let Some(ch) = hidpp::Channel::any(h.0, caps.input_len as usize, 0) {
+                if gamepads::query_playstation(&ch, attrs.product_id, caps.input_len as usize, out) {
+                    done.push(id);
+                    return;
+                }
+            }
+        }
     }
 
     // Mouse con cable: colección Generic Desktop / Mouse de un dispositivo USB directo.

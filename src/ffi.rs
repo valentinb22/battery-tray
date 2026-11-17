@@ -446,3 +446,14 @@ impl Drop for HandleGuard {
         }
     }
 }
+
+// xinput (mandos Xbox)
+#[repr(C)]
+pub struct XINPUT_BATTERY_INFORMATION {
+    pub battery_type: u8,
+    pub battery_level: u8,
+}
+pub const BATTERY_DEVTYPE_GAMEPAD: u8 = 0;
+pub const BATTERY_TYPE_ALKALINE: u8 = 2;
+pub const BATTERY_TYPE_NIMH: u8 = 3;
+windows_targets::link!("xinput1_4.dll" "system" fn XInputGetBatteryInformation(user: u32, dev_type: u8, info: *mut XINPUT_BATTERY_INFORMATION) -> u32);

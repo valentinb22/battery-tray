@@ -16,6 +16,8 @@ const F_DEVICE_NAME: u16 = 0x0005;
 const F_BATTERY_STATUS: u16 = 0x1000;
 const F_BATTERY_VOLTAGE: u16 = 0x1001;
 const F_UNIFIED_BATTERY: u16 = 0x1004;
+/// Medida ADC de tensión: auriculares Logitech G (G533, G633, G733, G933, G935, G PRO…).
+const F_ADC_MEASUREMENT: u16 = 0x1F20;
 
 pub struct Channel {
     h: HANDLE,
@@ -28,6 +30,14 @@ impl Channel {
     /// `h` debe estar abierto con FILE_FLAG_OVERLAPPED; su cierre es responsabilidad del llamador.
     pub unsafe fn new(h: HANDLE, in_len: usize, out_len: usize) -> Option<Self> {
         if in_len < 20 || out_len < 20 {
+            return None;
+        }
+        Self::any(h, in_len, out_len)
+    }
+
+    /// Igual que `new`, sin exigir el tamaño de informe de HID++ (otros protocolos).
+    pub unsafe fn any(h: HANDLE, in_len: usize, out_len: usize) -> Option<Self> {
+        if in_len == 0 {
             return None;
         }
         let event = CreateEventW(null(), 1, 0, null());
@@ -188,8 +198,22 @@ fn read_battery(ch: &Channel, idx: u8, feature: &dyn Fn(u16) -> Option<u8>) -> O
             }
         }
     }
+    // 0x1F20 ADC_MEASUREMENT: [mV alto, mV bajo, estado(3 = cargando)]
+    if let Some(fi) = feature(F_ADC_MEASUREMENT) {
+        if let Some(r) = ch.request(idx, fi, 0, &[], 1000) {
+            let mv = u16::from_be_bytes([r[0], r[1]]);
+            if mv >= HEADSET_CURVE[HEADSET_CURVE.len() - 1].0 {
+                let charge = if r[2] == 3 { Charge::Charging } else { Charge::Discharging };
+                return Some((interpolate(mv, &HEADSET_CURVE), charge));
+            }
+        }
+    }
     None
 }
+
+/// Calibración de HeadsetControl para los auriculares Logitech G633/G733/G933/G935.
+const HEADSET_CURVE: [(u16, u8); 8] =
+    [(4100, 100), (3950, 80), (3850, 60), (3750, 40), (3650, 20), (3500, 10), (3300, 5), (3150, 0)];
 
 fn read_identity(ch: &Channel, idx: u8, feature: &dyn Fn(u16) -> Option<u8>) -> (String, Kind) {
     let fallback = || ("Dispositivo Logitech".to_string(), Kind::Other);
@@ -225,23 +249,29 @@ fn read_identity(ch: &Channel, idx: u8, feature: &dyn Fn(u16) -> Option<u8>) -> 
 
 /// Curva de descarga típica de una celda Li-Po de 1S.
 fn voltage_to_percent(mv: u16) -> u8 {
-    const CURVE: [(u16, u8); 11] = [
-        (4186, 100),
-        (4067, 90),
-        (3989, 80),
-        (3922, 70),
-        (3859, 60),
-        (3811, 50),
-        (3778, 40),
-        (3751, 30),
-        (3717, 20),
-        (3671, 10),
-        (3500, 0),
+    interpolate(mv, &CURVE)
+}
+
+const CURVE: [(u16, u8); 11] = [
+    (4186, 100),
+    (4067, 90),
+    (3989, 80),
+    (3922, 70),
+    (3859, 60),
+    (3811, 50),
+    (3778, 40),
+    (3751, 30),
+    (3717, 20),
+    (3671, 10),
+    (3500, 0),
     ];
-    if mv >= CURVE[0].0 {
+
+/// Interpolación lineal en una curva (mV, %) ordenada de mayor a menor tensión.
+fn interpolate(mv: u16, curve: &[(u16, u8)]) -> u8 {
+    if mv >= curve[0].0 {
         return 100;
     }
-    for w in CURVE.windows(2) {
+    for w in curve.windows(2) {
         let ((v_hi, p_hi), (v_lo, p_lo)) = (w[0], w[1]);
         if mv >= v_lo {
             let span = (v_hi - v_lo) as u32;

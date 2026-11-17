@@ -1,17 +1,21 @@
 //! Modelo de dispositivo y fusión de las distintas fuentes de batería.
 //!
 //! Fuentes (de mayor a menor prioridad cuando un mismo periférico aparece varias veces):
-//!   40  Protocolos de fabricante: Logitech HID++ 2.0, HyperX (0951:170B), Compx (3554:FA09)
-//!   30  BLE GATT Battery Service 0x180F / 0x2A19 (WinRT)
+//!   40  Protocolos de fabricante: Logitech HID++ 2.0, Razer, SteelSeries, Corsair, HyperX,
+//!       Compx (3554:FA09) y mandos PlayStation
+//!   30  BLE GATT Battery Service 0x180F / 0x2A19 (WinRT) y mandos Xbox (XInput)
 //!   20  HID estándar: Usage Page 0x06, Usage 0x20 "Battery Strength"
 //!   10  Propiedad PnP de batería que mantiene la pila Bluetooth de Windows
 
 mod ble;
 mod compx;
+mod gamepads;
+mod headsets;
 mod hid;
 mod hidpp;
 mod hyperx;
 mod pnp;
+mod razer;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Kind {
@@ -104,6 +108,7 @@ pub fn collect_all() -> Vec<Device> {
     let mut all = Vec::new();
     pnp::collect(&mut all);
     hid::collect(&mut all);
+    gamepads::collect_xinput(&mut all);
     ble::collect(&mut all);
     merge(all)
 }
