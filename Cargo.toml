@@ -1,6 +1,6 @@
 [package]
 name = "battery-tray"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 description = "Nivel de batería de periféricos inalámbricos en la bandeja del sistema (Windows 10/11)"
 publish = false

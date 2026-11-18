@@ -297,6 +297,8 @@ pub const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
 
 pub const REG_SZ: u32 = 1;
 pub const REG_DWORD: u32 = 4;
+pub const REG_BINARY: u32 = 3;
+pub const RRF_RT_REG_BINARY: u32 = 0x08;
 pub const RRF_RT_REG_SZ: u32 = 0x02;
 pub const RRF_RT_REG_DWORD: u32 = 0x10;
 

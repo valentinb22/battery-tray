@@ -9,6 +9,10 @@ use std::ptr::null_mut;
 pub const APP_KEY: &str = "Software\\BatteryTray";
 pub const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 pub const RUN_VALUE: &str = "BatteryTray";
+/// Estado de cada entrada de inicio (lo que muestra y cambia el Administrador de tareas):
+/// 12 bytes; primer byte par = habilitada, impar = deshabilitada. Sin esta marca, Windows
+/// puede saltarse la entrada Run al iniciar sesión.
+const APPROVED_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
 const THEME_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 
 pub const DEFAULT_POLL_MINUTES: u32 = 5;
@@ -169,10 +173,54 @@ fn modified(p: &Path) -> Option<std::time::SystemTime> {
     fs::metadata(p).and_then(|m| m.modified()).ok()
 }
 
-pub fn autostart_enabled() -> bool {
+/// `Some(true)` habilitada, `Some(false)` deshabilitada (p. ej. desde el Administrador de
+/// tareas), `None` sin marca.
+fn startup_approved() -> Option<bool> {
+    let (k, v) = (wide(APPROVED_KEY), wide(RUN_VALUE));
+    let mut data = [0u8; 12];
+    let mut len = data.len() as u32;
+    let r = unsafe {
+        RegGetValueW(
+            hkey_current_user(),
+            k.as_ptr(),
+            v.as_ptr(),
+            RRF_RT_REG_BINARY,
+            null_mut(),
+            data.as_mut_ptr() as *mut c_void,
+            &mut len,
+        )
+    };
+    (r == 0 && len >= 1).then(|| data[0] % 2 == 0)
+}
+
+fn set_startup_approved(enabled: bool) {
+    let (k, v) = (wide(APPROVED_KEY), wide(RUN_VALUE));
+    unsafe {
+        if enabled {
+            let data = [2u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+            RegSetKeyValueW(
+                hkey_current_user(),
+                k.as_ptr(),
+                v.as_ptr(),
+                REG_BINARY,
+                data.as_ptr() as *const c_void,
+                data.len() as u32,
+            );
+        } else {
+            RegDeleteKeyValueW(hkey_current_user(), k.as_ptr(), v.as_ptr());
+        }
+    }
+}
+
+/// La entrada Run existe y apunta a este programa (copia actual o instalada).
+fn run_entry_is_ours() -> bool {
     let Some(v) = get_string(RUN_KEY, RUN_VALUE) else { return false };
     let target = installed_exe().map(|p| quoted(&p));
     v.eq_ignore_ascii_case(&quoted(&current_exe())) || target.is_some_and(|t| v.eq_ignore_ascii_case(&t))
+}
+
+pub fn autostart_enabled() -> bool {
+    run_entry_is_ours() && startup_approved() != Some(false)
 }
 
 /// Activa o desactiva el inicio con Windows. Al activarlo se instala una copia en una
@@ -195,12 +243,19 @@ pub fn set_autostart(enable: bool) {
             RegDeleteKeyValueW(hkey_current_user(), k.as_ptr(), v.as_ptr());
         }
     }
+    set_startup_approved(enable);
 }
 
 /// Al arrancar: si el inicio automático está activo, (a) migra una entrada antigua que
 /// apuntaba a otra carpeta hacia la copia instalada, y (b) si este ejecutable es más
 /// nuevo que la copia instalada, la actualiza.
 pub fn sync_install() {
+    // Instalaciones anteriores escribían solo la entrada Run, sin la marca de habilitada:
+    // Windows no las ejecutaba al iniciar sesión. Se repara sin pisar una desactivación
+    // hecha por el usuario en el Administrador de tareas.
+    if run_entry_is_ours() && startup_approved().is_none() {
+        set_startup_approved(true);
+    }
     let Some(v) = get_string(RUN_KEY, RUN_VALUE) else { return };
     let (cur, Some(dst)) = (current_exe(), installed_exe()) else { return };
     if same_path(&cur, &dst) {
